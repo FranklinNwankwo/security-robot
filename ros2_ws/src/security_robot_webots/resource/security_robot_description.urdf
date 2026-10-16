@@ -34,7 +34,8 @@
       <material name="black"/>
     </visual>
   </link>
-  <joint name="left_wheel_joint" type="fixed">
+  <joint name="left_wheel_joint" type="continuous">
+    <axis xyz="0 1 0"/>
     <parent link="base_link"/>
     <child link="left_wheel"/>
     <origin xyz="0 0.09 0.03" rpy="0 0 0"/>
@@ -47,7 +48,8 @@
       <material name="black"/>
     </visual>
   </link>
-  <joint name="right_wheel_joint" type="fixed">
+  <joint name="right_wheel_joint" type="continuous">
+    <axis xyz="0 1 0"/>
     <parent link="base_link"/>
     <child link="right_wheel"/>
     <origin xyz="0 -0.09 0.03" rpy="0 0 0"/>

@@ -1,6 +1,6 @@
 Panels:
   - Class: rviz_common/Displays
-    Help Height: 78
+    Help Height: 79
     Name: Displays
     Property Tree Widget:
       Expanded:
@@ -8,8 +8,10 @@ Panels:
         - /Status1
         - /RobotModel1
         - /LaserScan1
+        - /Odometry1
+        - /Odometry1/Shape1
       Splitter Ratio: 0.5
-    Tree Height: 555
+    Tree Height: 554
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -120,6 +122,8 @@ Visualization Manager:
           Value: true
         lidar_link:
           Value: true
+        odom:
+          Value: true
         rear_caster:
           Value: true
         right_wheel:
@@ -141,6 +145,8 @@ Visualization Manager:
             {}
           right_wheel:
             {}
+        odom:
+          {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -177,10 +183,49 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Angle Tolerance: 0.10000000149011612
+      Class: rviz_default_plugins/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 1
+      Name: Odometry
+      Position Tolerance: 0.10000000149011612
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 255; 25; 0
+        Head Length: 0.05000000074505806
+        Head Radius: 0.02500000037252903
+        Shaft Length: 0.15000000596046448
+        Shaft Radius: 0.009999999776482582
+        Value: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /odom
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: base_link
+    Fixed Frame: odom
     Frame Rate: 30
   Name: root
   Tools:
@@ -223,7 +268,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 4.467782974243164
+      Distance: 3.808901071548462
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -238,10 +283,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9353983998298645
+      Pitch: 0.7653986215591431
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.770407199859619
+      Yaw: 4.355406284332275
     Saved:
       - Class: rviz_default_plugins/Orbit
         Distance: 4.467782974243164
@@ -299,5 +344,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1200
-  X: 393
-  Y: 134
+  X: 429
+  Y: 52

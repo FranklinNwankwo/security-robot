@@ -4,6 +4,14 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 
 WorldInfo {
   basicTimeStep 32
+  contactProperties [
+    ContactProperties {
+      material2 "caster"
+      coulombFriction [
+        0
+      ]
+    }
+  ]
 }
 Viewpoint {
   orientation 0 1 0 1.5708
@@ -138,6 +146,7 @@ Robot {
           }
         ]
         name "front caster"
+        contactMaterial "caster"
         boundingObject USE CASTER
         physics Physics {
         }
@@ -153,6 +162,7 @@ Robot {
           USE CASTER
         ]
         name "rear caster"
+        contactMaterial "caster"
         boundingObject USE CASTER
         physics Physics {
         }
