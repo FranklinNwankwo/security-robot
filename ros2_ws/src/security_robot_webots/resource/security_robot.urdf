@@ -1,0 +1,6 @@
+<?xml version="1.0" ?>
+<robot name="security_robot">
+    <webots>
+        <plugin type="security_robot_webots.security_robot_driver.SecurityRobotDriver" />
+    </webots>
+</robot>

@@ -1,0 +1,174 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
+
+WorldInfo {
+  basicTimeStep 32
+}
+Viewpoint {
+  orientation 0 1 0 1.5708
+  position 0 0 3.5
+}
+Background {
+  skyColor [
+    0.4 0.7 1
+  ]
+}
+DirectionalLight {
+  direction -0.5 -0.5 -1
+}
+RectangleArena {
+  floorSize 2 2
+  wallHeight 0.2
+}
+Solid {
+  translation 0.6 0.3 0.1
+  children [
+    DEF OBSTACLE Shape {
+      appearance PBRAppearance {
+        baseColor 0.8 0.3 0.2
+        roughness 1
+        metalness 0
+      }
+      geometry Box {
+        size 0.1 0.6 0.2
+      }
+    }
+  ]
+  name "obstacle wall"
+  boundingObject USE OBSTACLE
+}
+Robot {
+  translation 0 0 0
+  children [
+    DEF BODY Pose {
+      translation 0 0 0.045
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.2 0.3 0.8
+            roughness 1
+            metalness 0
+          }
+          geometry DEF BODY_BOX Box {
+            size 0.2 0.15 0.06
+          }
+        }
+      ]
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 0 1 0
+        anchor 0 0.09 0.03
+      }
+      device [
+        RotationalMotor {
+          name "left wheel motor"
+          maxVelocity 20
+        }
+        PositionSensor {
+          name "left wheel sensor"
+        }
+      ]
+      endPoint Solid {
+        translation 0 0.09 0.03
+        rotation 1 0 0 1.5708
+        children [
+          DEF WHEEL Shape {
+            appearance PBRAppearance {
+              baseColor 0.1 0.1 0.1
+              roughness 1
+              metalness 0
+            }
+            geometry Cylinder {
+              height 0.02
+              radius 0.03
+            }
+          }
+        ]
+        name "left wheel"
+        boundingObject USE WHEEL
+        physics Physics {
+        }
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 0 1 0
+        anchor 0 -0.09 0.03
+      }
+      device [
+        RotationalMotor {
+          name "right wheel motor"
+          maxVelocity 20
+        }
+        PositionSensor {
+          name "right wheel sensor"
+        }
+      ]
+      endPoint Solid {
+        translation 0 -0.09 0.03
+        rotation 1 0 0 1.5708
+        children [
+          USE WHEEL
+        ]
+        name "right wheel"
+        boundingObject USE WHEEL
+        physics Physics {
+        }
+      }
+    }
+    BallJoint {
+      jointParameters BallJointParameters {
+        anchor 0.08 0 0.015
+      }
+      endPoint Solid {
+        translation 0.08 0 0.015
+        children [
+          DEF CASTER Shape {
+            appearance PBRAppearance {
+              baseColor 0.5 0.5 0.5
+              roughness 1
+              metalness 0
+            }
+            geometry Sphere {
+              radius 0.015
+              subdivision 2
+            }
+          }
+        ]
+        name "front caster"
+        boundingObject USE CASTER
+        physics Physics {
+        }
+      }
+    }
+    BallJoint {
+      jointParameters BallJointParameters {
+        anchor -0.08 0 0.015
+      }
+      endPoint Solid {
+        translation -0.08 0 0.015
+        children [
+          USE CASTER
+        ]
+        name "rear caster"
+        boundingObject USE CASTER
+        physics Physics {
+        }
+      }
+    }
+  ]
+  name "security_robot"
+  boundingObject Pose {
+    translation 0 0 0.045
+    children [
+      USE BODY_BOX
+    ]
+  }
+  physics Physics {
+    density -1
+    mass 2
+  }
+  controller "<extern>"
+}
