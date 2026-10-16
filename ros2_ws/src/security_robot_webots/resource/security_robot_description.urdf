@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<robot name="security_robot">
+
+  <material name="blue"><color rgba="0.2 0.3 0.8 1.0"/></material>
+  <material name="black"><color rgba="0.1 0.1 0.1 1.0"/></material>
+  <material name="grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+
+  <!-- Robot origin: ground level, centre of the wheel axle (matches Webots) -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.045" rpy="0 0 0"/>
+      <geometry><box size="0.2 0.15 0.06"/></geometry>
+      <material name="blue"/>
+    </visual>
+  </link>
+
+  <link name="lidar_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.035" length="0.03"/></geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0 0 0.09" rpy="0 0 0"/>
+  </joint>
+
+  <link name="left_wheel">
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.03" length="0.02"/></geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+  <joint name="left_wheel_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="left_wheel"/>
+    <origin xyz="0 0.09 0.03" rpy="0 0 0"/>
+  </joint>
+
+  <link name="right_wheel">
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.03" length="0.02"/></geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+  <joint name="right_wheel_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="right_wheel"/>
+    <origin xyz="0 -0.09 0.03" rpy="0 0 0"/>
+  </joint>
+
+  <link name="front_caster">
+    <visual>
+      <geometry><sphere radius="0.015"/></geometry>
+      <material name="grey"/>
+    </visual>
+  </link>
+  <joint name="front_caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="front_caster"/>
+    <origin xyz="0.08 0 0.015" rpy="0 0 0"/>
+  </joint>
+
+  <link name="rear_caster">
+    <visual>
+      <geometry><sphere radius="0.015"/></geometry>
+      <material name="grey"/>
+    </visual>
+  </link>
+  <joint name="rear_caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rear_caster"/>
+    <origin xyz="-0.08 0 0.015" rpy="0 0 0"/>
+  </joint>
+
+</robot>
