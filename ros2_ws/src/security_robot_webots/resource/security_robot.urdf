@@ -1,6 +1,16 @@
 <?xml version="1.0" ?>
 <robot name="security_robot">
     <webots>
+        <device reference="lidar" type="Lidar">
+            <ros>
+                <enabled>true</enabled>
+                <topicName>/scan</topicName>
+                <updateRate>10</updateRate>
+                <alwaysOn>true</alwaysOn>
+                <frameName>lidar_link</frameName>
+            </ros>
+        </device>
+
         <plugin type="security_robot_webots.security_robot_driver.SecurityRobotDriver" />
     </webots>
 </robot>

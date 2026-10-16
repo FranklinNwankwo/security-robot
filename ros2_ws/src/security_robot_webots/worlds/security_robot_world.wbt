@@ -158,6 +158,28 @@ Robot {
         }
       }
     }
+    Lidar {
+      translation 0 0 0.09
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.1 0.1 0.1
+            roughness 1
+            metalness 0
+          }
+          geometry Cylinder {
+            height 0.03
+            radius 0.035
+          }
+        }
+      ]
+      name "lidar"
+      horizontalResolution 360
+      fieldOfView 6.28318
+      numberOfLayers 1
+      minRange 0.12
+      maxRange 3.5
+    }
   ]
   name "security_robot"
   boundingObject Pose {
