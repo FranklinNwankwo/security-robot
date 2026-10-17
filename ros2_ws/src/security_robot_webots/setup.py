@@ -10,6 +10,8 @@ data_files = [
     ('share/' + package_name + '/worlds', glob('worlds/*.wbt')),
     ('share/' + package_name + '/resource', glob('resource/*.urdf')),
     ('share/' + package_name + '/rviz', glob('rviz/*.rviz')),
+    ('share/' + package_name + '/config', glob('config/*.yaml')),
+    ('share/' + package_name + '/maps', glob('maps/*')),
 ]
 
 setup(
@@ -23,5 +25,7 @@ setup(
     maintainer_email='slim@todo.todo',
     description='Webots simulation and driver for the security robot',
     license='Apache-2.0',
-    entry_points={'console_scripts': []},
+    entry_points={'console_scripts': [
+        'scan_normalizer = security_robot_webots.scan_normalizer:main',
+    ]},
 )
