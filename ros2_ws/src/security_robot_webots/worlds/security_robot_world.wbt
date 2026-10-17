@@ -15,7 +15,7 @@ WorldInfo {
 }
 Viewpoint {
   orientation 0 1 0 1.5708
-  position 0 0 3.5
+  position 0 0 12
 }
 Background {
   skyColor [
@@ -23,96 +23,189 @@ Background {
   ]
 }
 DirectionalLight {
+  ambientIntensity 0.5
   direction -0.5 -0.5 -1
 }
 RectangleArena {
-  floorSize 2 2
-  wallHeight 0.2
+  floorSize 8 6
+  floorTileSize 1 1
+  wallThickness 0.1
+  wallHeight 1.2
 }
-Solid {
-  translation 0.6 0.5 0.1
+DEF INNER_WALL_APPEARANCE Solid {
+  translation 1.5 -1.8 0.6
   children [
-    DEF OBSTACLE Shape {
-      appearance PBRAppearance {
-        baseColor 0.8 0.3 0.2
+    DEF WALL_E_SOUTH Shape {
+      appearance DEF WALL_LOOK PBRAppearance {
+        baseColor 0.85 0.85 0.8
         roughness 1
         metalness 0
       }
       geometry Box {
-        size 0.1 0.6 0.2
+        size 0.1 2.4 1.2
       }
     }
   ]
-  name "obstacle wall"
-  boundingObject USE OBSTACLE
+  name "wall east south"
+  boundingObject USE WALL_E_SOUTH
 }
 Solid {
-  translation -0.5 -0.4 0.1
+  translation 1.5 1.8 0.6
   children [
-    DEF BOX_A Shape {
+    DEF WALL_E_NORTH Shape {
+      appearance USE WALL_LOOK
+      geometry Box {
+        size 0.1 2.4 1.2
+      }
+    }
+  ]
+  name "wall east north"
+  boundingObject USE WALL_E_NORTH
+}
+Solid {
+  translation -2.7 1 0.6
+  children [
+    DEF WALL_N_WEST Shape {
+      appearance USE WALL_LOOK
+      geometry Box {
+        size 2.6 0.1 1.2
+      }
+    }
+  ]
+  name "wall north west"
+  boundingObject USE WALL_N_WEST
+}
+Solid {
+  translation 0.65 1 0.6
+  children [
+    DEF WALL_N_EAST Shape {
+      appearance USE WALL_LOOK
+      geometry Box {
+        size 1.7 0.1 1.2
+      }
+    }
+  ]
+  name "wall north east"
+  boundingObject USE WALL_N_EAST
+}
+Solid {
+  translation -2.5 2.2 0.375
+  children [
+    DEF DESK Shape {
+      appearance PBRAppearance {
+        baseColor 0.55 0.35 0.2
+        roughness 1
+        metalness 0
+      }
+      geometry Box {
+        size 1.2 0.6 0.75
+      }
+    }
+  ]
+  name "desk"
+  boundingObject USE DESK
+}
+Solid {
+  translation 0.9 2.6 0.6
+  children [
+    DEF CABINET Shape {
+      appearance PBRAppearance {
+        baseColor 0.4 0.4 0.45
+        roughness 1
+        metalness 0
+      }
+      geometry Box {
+        size 0.6 0.4 1.2
+      }
+    }
+  ]
+  name "cabinet"
+  boundingObject USE CABINET
+}
+Solid {
+  translation -2.6 -1.6 0.375
+  children [
+    DEF TABLE Shape {
       appearance PBRAppearance {
         baseColor 0.3 0.6 0.3
         roughness 1
         metalness 0
       }
       geometry Box {
-        size 0.2 0.2 0.2
+        size 1 1 0.75
       }
     }
   ]
-  name "box a"
-  boundingObject USE BOX_A
+  name "table"
+  boundingObject USE TABLE
 }
 Solid {
-  translation -0.5 0.55 0.1
+  translation -0.9 -1.9 0.6
   children [
-    DEF PILLAR Shape {
+    DEF COLUMN Shape {
       appearance PBRAppearance {
         baseColor 0.8 0.7 0.2
         roughness 1
         metalness 0
       }
       geometry Cylinder {
-        height 0.2
-        radius 0.08
+        height 1.2
+        radius 0.2
       }
     }
   ]
-  name "pillar"
-  boundingObject USE PILLAR
+  name "column"
+  boundingObject USE COLUMN
 }
 Solid {
-  translation 0.45 -0.55 0.1
-  rotation 0 0 1 0.5
+  translation 3.2 2.2 0.3
   children [
-    DEF BOX_B Shape {
+    DEF CRATE_A Shape {
+      appearance PBRAppearance {
+        baseColor 0.8 0.3 0.2
+        roughness 1
+        metalness 0
+      }
+      geometry Box {
+        size 0.6 0.6 0.6
+      }
+    }
+  ]
+  name "crate a"
+  boundingObject USE CRATE_A
+}
+Solid {
+  translation 3 -2.1 0.375
+  rotation 0 0 1 0.4
+  children [
+    DEF CRATE_B Shape {
       appearance PBRAppearance {
         baseColor 0.5 0.3 0.6
         roughness 1
         metalness 0
       }
       geometry Box {
-        size 0.3 0.12 0.2
+        size 0.9 0.4 0.75
       }
     }
   ]
-  name "box b"
-  boundingObject USE BOX_B
+  name "crate b"
+  boundingObject USE CRATE_B
 }
 Robot {
   translation 0 0 0
   children [
-    DEF BODY Pose {
-      translation 0 0 0.045
+    Pose {
+      translation 0 0 0.12
       children [
         Shape {
           appearance PBRAppearance {
             baseColor 0.2 0.3 0.8
-            roughness 1
+            roughness 0.6
             metalness 0
           }
           geometry DEF BODY_BOX Box {
-            size 0.2 0.15 0.06
+            size 0.44 0.38 0.18
           }
         }
       ]
@@ -120,19 +213,19 @@ Robot {
     HingeJoint {
       jointParameters HingeJointParameters {
         axis 0 1 0
-        anchor 0 0.09 0.03
+        anchor 0 0.22 0.08
       }
       device [
         RotationalMotor {
           name "left wheel motor"
-          maxVelocity 20
+          maxVelocity 12
         }
         PositionSensor {
           name "left wheel sensor"
         }
       ]
       endPoint Solid {
-        translation 0 0.09 0.03
+        translation 0 0.22 0.08
         rotation 1 0 0 1.5708
         children [
           DEF WHEEL Shape {
@@ -142,8 +235,8 @@ Robot {
               metalness 0
             }
             geometry Cylinder {
-              height 0.02
-              radius 0.03
+              height 0.04
+              radius 0.08
             }
           }
         ]
@@ -156,19 +249,19 @@ Robot {
     HingeJoint {
       jointParameters HingeJointParameters {
         axis 0 1 0
-        anchor 0 -0.09 0.03
+        anchor 0 -0.22 0.08
       }
       device [
         RotationalMotor {
           name "right wheel motor"
-          maxVelocity 20
+          maxVelocity 12
         }
         PositionSensor {
           name "right wheel sensor"
         }
       ]
       endPoint Solid {
-        translation 0 -0.09 0.03
+        translation 0 -0.22 0.08
         rotation 1 0 0 1.5708
         children [
           USE WHEEL
@@ -181,10 +274,10 @@ Robot {
     }
     BallJoint {
       jointParameters BallJointParameters {
-        anchor 0.08 0 0.015
+        anchor 0.18 0 0.03
       }
       endPoint Solid {
-        translation 0.08 0 0.015
+        translation 0.18 0 0.03
         children [
           DEF CASTER Shape {
             appearance PBRAppearance {
@@ -193,7 +286,7 @@ Robot {
               metalness 0
             }
             geometry Sphere {
-              radius 0.015
+              radius 0.03
               subdivision 2
             }
           }
@@ -207,10 +300,10 @@ Robot {
     }
     BallJoint {
       jointParameters BallJointParameters {
-        anchor -0.08 0 0.015
+        anchor -0.18 0 0.03
       }
       endPoint Solid {
-        translation -0.08 0 0.015
+        translation -0.18 0 0.03
         children [
           USE CASTER
         ]
@@ -222,7 +315,7 @@ Robot {
       }
     }
     Lidar {
-      translation 0 0 0.09
+      translation 0 0 0.25
       children [
         Shape {
           appearance PBRAppearance {
@@ -231,8 +324,8 @@ Robot {
             metalness 0
           }
           geometry Cylinder {
-            height 0.03
-            radius 0.035
+            height 0.05
+            radius 0.05
           }
         }
       ]
@@ -240,14 +333,30 @@ Robot {
       horizontalResolution 360
       fieldOfView 6.28318
       numberOfLayers 1
-      minRange 0.12
-      maxRange 3.5
+      minRange 0.2
+      maxRange 8
+    }
+    Pose {
+      translation -0.15 0 0.55
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.6 0.6 0.6
+            roughness 0.5
+            metalness 0
+          }
+          geometry Cylinder {
+            height 0.68
+            radius 0.02
+          }
+        }
+      ]
     }
     Camera {
-      translation 0.1 0 0.13
+      translation -0.15 0 0.92
       children [
         Pose {
-          translation -0.015 0 0
+          translation -0.025 0 0
           children [
             Shape {
               appearance PBRAppearance {
@@ -256,28 +365,28 @@ Robot {
                 metalness 0
               }
               geometry Box {
-                size 0.02 0.04 0.03
+                size 0.04 0.08 0.05
               }
             }
           ]
         }
       ]
       name "camera"
-      fieldOfView 1.047
+      fieldOfView 1.2
       width 640
       height 480
     }
   ]
   name "security_robot"
   boundingObject Pose {
-    translation 0 0 0.045
+    translation 0 0 0.12
     children [
       USE BODY_BOX
     ]
   }
   physics Physics {
     density -1
-    mass 2
+    mass 15
   }
   controller "<extern>"
 }

@@ -6,9 +6,9 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import JointState
 from tf2_ros import TransformBroadcaster
 
-WHEEL_RADIUS = 0.03            # m  - must match the wheel Cylinder radius in the world file
-HALF_WHEEL_SEPARATION = 0.10   # m  - effective (calibrated): wheel contact is at the outer edge, not the centre
-MAX_WHEEL_SPEED = 20.0         # rad/s - must match RotationalMotor maxVelocity
+WHEEL_RADIUS = 0.08            # m  - must match the wheel Cylinder radius in the world file
+HALF_WHEEL_SEPARATION = 0.24   # m, calibrated: wheel contact is at the outer rim
+MAX_WHEEL_SPEED = 12.0  # rad/s, matches RotationalMotor maxVelocity
 
 ODOM_FRAME = 'odom'
 BASE_FRAME = 'base_link'

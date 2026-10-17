@@ -8,14 +8,13 @@
   <!-- Robot origin: ground level, centre of the wheel axle (matches Webots) -->
   <link name="base_link">
     <visual>
-      <origin xyz="0 0 0.045" rpy="0 0 0"/>
-      <geometry><box size="0.2 0.15 0.06"/></geometry>
+      <origin xyz="0 0 0.12" rpy="0 0 0"/>
+      <geometry><box size="0.44 0.38 0.18"/></geometry>
       <material name="blue"/>
     </visual>
   </link>
 
-  <!-- Same point as base_link (our base_link is already at ground level).
-       Exists because several Nav2 nodes default to this frame name. -->
+  <!-- Same point as base_link; several Nav2 nodes default to this frame name -->
   <link name="base_footprint"/>
   <joint name="base_footprint_joint" type="fixed">
     <parent link="base_link"/>
@@ -25,28 +24,39 @@
 
   <link name="lidar_link">
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><cylinder radius="0.035" length="0.03"/></geometry>
+      <geometry><cylinder radius="0.05" length="0.05"/></geometry>
       <material name="black"/>
     </visual>
   </link>
   <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child link="lidar_link"/>
-    <origin xyz="0 0 0.09" rpy="0 0 0"/>
+    <origin xyz="0 0 0.25" rpy="0 0 0"/>
+  </joint>
+
+  <link name="mast_link">
+    <visual>
+      <geometry><cylinder radius="0.02" length="0.68"/></geometry>
+      <material name="grey"/>
+    </visual>
+  </link>
+  <joint name="mast_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="mast_link"/>
+    <origin xyz="-0.15 0 0.55" rpy="0 0 0"/>
   </joint>
 
   <link name="camera_link">
     <visual>
-      <origin xyz="-0.015 0 0" rpy="0 0 0"/>
-      <geometry><box size="0.02 0.04 0.03"/></geometry>
+      <origin xyz="-0.025 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.04 0.08 0.05"/></geometry>
       <material name="black"/>
     </visual>
   </link>
   <joint name="camera_joint" type="fixed">
     <parent link="base_link"/>
     <child link="camera_link"/>
-    <origin xyz="0.1 0 0.13" rpy="0 0 0"/>
+    <origin xyz="-0.15 0 0.92" rpy="0 0 0"/>
   </joint>
 
   <!-- ROS optical frame convention: z forward, x right, y down -->
@@ -60,7 +70,7 @@
   <link name="left_wheel">
     <visual>
       <origin xyz="0 0 0" rpy="1.5708 0 0"/>
-      <geometry><cylinder radius="0.03" length="0.02"/></geometry>
+      <geometry><cylinder radius="0.08" length="0.04"/></geometry>
       <material name="black"/>
     </visual>
   </link>
@@ -68,13 +78,13 @@
     <axis xyz="0 1 0"/>
     <parent link="base_link"/>
     <child link="left_wheel"/>
-    <origin xyz="0 0.09 0.03" rpy="0 0 0"/>
+    <origin xyz="0 0.22 0.08" rpy="0 0 0"/>
   </joint>
 
   <link name="right_wheel">
     <visual>
       <origin xyz="0 0 0" rpy="1.5708 0 0"/>
-      <geometry><cylinder radius="0.03" length="0.02"/></geometry>
+      <geometry><cylinder radius="0.08" length="0.04"/></geometry>
       <material name="black"/>
     </visual>
   </link>
@@ -82,31 +92,31 @@
     <axis xyz="0 1 0"/>
     <parent link="base_link"/>
     <child link="right_wheel"/>
-    <origin xyz="0 -0.09 0.03" rpy="0 0 0"/>
+    <origin xyz="0 -0.22 0.08" rpy="0 0 0"/>
   </joint>
 
   <link name="front_caster">
     <visual>
-      <geometry><sphere radius="0.015"/></geometry>
+      <geometry><sphere radius="0.03"/></geometry>
       <material name="grey"/>
     </visual>
   </link>
   <joint name="front_caster_joint" type="fixed">
     <parent link="base_link"/>
     <child link="front_caster"/>
-    <origin xyz="0.08 0 0.015" rpy="0 0 0"/>
+    <origin xyz="0.18 0 0.03" rpy="0 0 0"/>
   </joint>
 
   <link name="rear_caster">
     <visual>
-      <geometry><sphere radius="0.015"/></geometry>
+      <geometry><sphere radius="0.03"/></geometry>
       <material name="grey"/>
     </visual>
   </link>
   <joint name="rear_caster_joint" type="fixed">
     <parent link="base_link"/>
     <child link="rear_caster"/>
-    <origin xyz="-0.08 0 0.015" rpy="0 0 0"/>
+    <origin xyz="-0.18 0 0.03" rpy="0 0 0"/>
   </joint>
 
 </robot>
