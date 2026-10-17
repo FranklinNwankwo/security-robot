@@ -53,6 +53,7 @@ def generate_launch_description():
         parameters=[
             {'robot_description': webots_urdf_path},
         ],
+        remappings=[('/camera/image_color', '/camera/image_raw')],
     )
 
     robot_state_publisher = Node(

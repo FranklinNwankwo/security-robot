@@ -243,6 +243,30 @@ Robot {
       minRange 0.12
       maxRange 3.5
     }
+    Camera {
+      translation 0.1 0 0.13
+      children [
+        Pose {
+          translation -0.015 0 0
+          children [
+            Shape {
+              appearance PBRAppearance {
+                baseColor 0.1 0.1 0.1
+                roughness 1
+                metalness 0
+              }
+              geometry Box {
+                size 0.02 0.04 0.03
+              }
+            }
+          ]
+        }
+      ]
+      name "camera"
+      fieldOfView 1.047
+      width 640
+      height 480
+    }
   ]
   name "security_robot"
   boundingObject Pose {

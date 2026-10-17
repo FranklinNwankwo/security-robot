@@ -11,6 +11,15 @@
             </ros>
         </device>
 
+        <device reference="camera" type="Camera">
+            <ros>
+                <topicName>/camera</topicName>
+                <updateRate>10</updateRate>
+                <alwaysOn>true</alwaysOn>
+                <frameName>camera_optical_link</frameName>
+            </ros>
+        </device>
+
         <plugin type="security_robot_webots.security_robot_driver.SecurityRobotDriver" />
     </webots>
 </robot>
