@@ -1,25 +1,25 @@
 frame_id: map
-loop: true            # repeat the route forever
-pause_seconds: 2.0    # wait at each waypoint (later: time to scan for people)
+loop: true
+pause_seconds: 2.0
 
 waypoints:
-  - name: north
-    x: 0.0
-    y: 0.7
-    yaw_deg: 0
-  - name: east
-    x: 0.7
-    y: 0.0
-    yaw_deg: -90
-  - name: south
-    x: 0.0
-    y: -0.75
+  - name: hall_west
+    x: -1.8
+    y: -0.4
     yaw_deg: 180
-  - name: west
-    x: -0.75
-    y: 0.05
-    yaw_deg: 90
-  - name: centre
+  - name: north_office
+    x: -1.0
+    y: 2.2
+    yaw_deg: 180
+  - name: east_room
+    x: 2.8
+    y: 0.0
+    yaw_deg: 0
+  - name: hall_south
+    x: 0.3
+    y: -2.2
+    yaw_deg: 180
+  - name: home
     x: 0.0
     y: 0.0
     yaw_deg: 0
