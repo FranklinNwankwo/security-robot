@@ -15,7 +15,7 @@
             <ros>
                 <topicName>/camera</topicName>
                 <updateRate>10</updateRate>
-                <alwaysOn>true</alwaysOn>
+                <alwaysOn>false</alwaysOn>
                 <frameName>camera_optical_link</frameName>
             </ros>
         </device>
