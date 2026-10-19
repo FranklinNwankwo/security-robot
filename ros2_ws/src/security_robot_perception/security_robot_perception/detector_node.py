@@ -51,7 +51,7 @@ class PersonDetector(Node):
         self.declare_parameter('image_topic', '/camera/image_raw')
         self.declare_parameter('confidence_threshold', 0.4)
         self.declare_parameter('inference_rate_hz', 3.0)
-        self.declare_parameter('image_size', 640)
+        self.declare_parameter('image_size', 416)
         self.declare_parameter('cpu_threads', 2)
         self.declare_parameter('publish_annotated', True)
 

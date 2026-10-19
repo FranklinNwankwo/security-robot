@@ -146,6 +146,9 @@ class PersonTracker(Node):
         self.declare_parameter('bearing_window_rad', 0.04)    # LiDAR rays checked around the person's direction
         self.declare_parameter('person_height_m', 1.7)        # for the size-based distance estimate
         self.declare_parameter('merge_radius_m', 0.6)         # two tracks this close in the room = same person
+        self.declare_parameter('max_person_range_m', 6.0)     # ignore position estimates further than this
+        self.declare_parameter('max_jump_m', 1.0)             # bigger jumps must be confirmed by the next reading
+        self.declare_parameter('strong_conf', 0.8)            # a detection this confident confirms a person at once
 
         gp = self.get_parameter
         self.min_hits = int(gp('min_hits').value)
@@ -186,6 +189,11 @@ class PersonTracker(Node):
         self.bearing_window = float(gp('bearing_window_rad').value)
         self.person_height = float(gp('person_height_m').value)
         self.merge_radius = float(gp('merge_radius_m').value)
+        self.max_person_range = float(gp('max_person_range_m').value)
+        self.max_jump = float(gp('max_jump_m').value)
+        self.strong_conf = float(gp('strong_conf').value)
+        self.last_det_time = None
+        self.det_interval = None   # measured time between YOLO results
 
         self.create_subscription(Detection2DArray, gp('detections_topic').value, self.detections_callback, 10)
         self.create_subscription(Image, gp('image_topic').value, self.image_callback, qos_profile_sensor_data)
@@ -257,6 +265,8 @@ class PersonTracker(Node):
             closest = min(candidates, key=lambda r: abs(r - size_dist))
             if 0.75 * size_dist <= closest <= 1.35 * size_dist:
                 rng = closest
+        if rng > self.max_person_range:
+            return None
         x, y, yaw = pose
         return (x + rng * math.cos(yaw + bearing), y + rng * math.sin(yaw + bearing))
 
@@ -286,7 +296,16 @@ class PersonTracker(Node):
         pos = self.localize(tr.box, stamp)
         if pos is not None:
             old = getattr(tr, 'pos', None)
-            tr.pos = pos if old is None else (0.5 * pos[0] + 0.5 * old[0], 0.5 * pos[1] + 0.5 * old[1])
+            if old is not None and math.hypot(pos[0] - old[0], pos[1] - old[1]) > self.max_jump:
+                pending = getattr(tr, 'pending_pos', None)
+                if pending is None or math.hypot(pos[0] - pending[0], pos[1] - pending[1]) > 0.5:
+                    tr.pending_pos = pos          # suspicious jump: wait for the next reading to confirm it
+                    pos = None
+                else:
+                    old = None                    # confirmed: the person really moved, take the new position
+            if pos is not None:
+                tr.pending_pos = None
+                tr.pos = pos if old is None else (0.5 * pos[0] + 0.5 * old[0], 0.5 * pos[1] + 0.5 * old[1])
         if tr.id is not None:
             mem = self.person_memory.setdefault(tr.id, {})
             mem['t'] = now
@@ -428,7 +447,7 @@ class PersonTracker(Node):
             vt = self.tracker_factory()
             vt.init(first, rect)
         except cv2.error as e:
-            self.get_logger().warn(f'Could not start visual tracker: {e}')
+            self.get_logger().debug(f'Could not start visual tracker: {e}')
             tr.visual = None
             return
 
@@ -462,6 +481,10 @@ class PersonTracker(Node):
 
     def detections_callback(self, msg):
         now = time.monotonic()
+        if self.last_det_time is not None:
+            dt = now - self.last_det_time
+            self.det_interval = dt if self.det_interval is None else 0.8 * self.det_interval + 0.2 * dt
+        self.last_det_time = now
         det_stamp = stamp_to_sec(msg.header.stamp)
         yaw_det = self.yaw_at(det_stamp)
 
@@ -522,7 +545,8 @@ class PersonTracker(Node):
         self.maybe_confirm(tr, det_stamp, now)
 
     def maybe_confirm(self, tr, det_stamp, now):
-        if tr.id is not None or tr.hits < self.min_hits:
+        needed = 1 if tr.conf >= self.strong_conf else self.min_hits
+        if tr.id is not None or tr.hits < needed:
             return
         best, best_dist = None, self.relink_px
         for old in self.tracks:
@@ -551,18 +575,27 @@ class PersonTracker(Node):
         self.remember(tr, det_stamp, now)
         self.start_visual(tr, tr.box, det_stamp, now)
 
+    def tentative_limit(self):
+        return max(self.tentative_max_age, 2.5 * (self.det_interval or 0.0))
+
+    def age_limit(self):
+        return max(self.max_age, 2.5 * (self.det_interval or 0.0))
+
+    def visual_only_limit(self):
+        return max(self.max_visual_only, 3.0 * (self.det_interval or 0.0))
+
     def prune(self, now):
         alive = []
         for tr in self.tracks:
             if tr.id is None:
-                if now - tr.last_seen <= self.tentative_max_age:
+                if now - tr.last_seen <= self.tentative_limit():
                     alive.append(tr)
                 continue
-            if now - tr.last_alive <= self.max_age and now - tr.last_seen <= self.max_visual_only:
+            if now - tr.last_alive <= self.age_limit() and now - tr.last_seen <= self.visual_only_limit():
                 alive.append(tr)
                 continue
             reason = ('no YOLO re-confirmation for '
-                      f'{now - tr.last_seen:.0f} s' if now - tr.last_seen > self.max_visual_only
+                      f'{now - tr.last_seen:.0f} s' if now - tr.last_seen > self.visual_only_limit()
                       else 'out of sight')
             self.get_logger().info(
                 f'Person #{tr.id} lost ({reason}; tracked for {tr.last_alive - tr.first_seen:.1f} s)'
