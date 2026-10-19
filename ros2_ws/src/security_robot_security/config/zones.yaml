@@ -1,0 +1,15 @@
+frame_id: map          # zones are drawn on the map
+alert_cooldown_s: 0     # alert on every re-sighting
+
+zones:
+  - name: east_room
+    level: restricted  # restricted = alert, watch = log only
+    polygon: [[1.55, -2.95], [3.95, -2.95], [3.95, 2.95], [1.55, 2.95]]
+
+  - name: north_office
+    level: restricted
+    polygon: [[-3.95, 1.05], [1.45, 1.05], [1.45, 2.95], [-3.95, 2.95]]
+
+  - name: main_hall_west
+    level: watch
+    polygon: [[-3.95, -2.95], [-1.5, -2.95], [-1.5, 0.95], [-3.95, 0.95]]

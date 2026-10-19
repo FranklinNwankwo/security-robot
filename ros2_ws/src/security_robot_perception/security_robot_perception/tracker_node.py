@@ -9,10 +9,11 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
-from std_msgs.msg import Int32
+from std_msgs.msg import Header, Int32
 from geometry_msgs.msg import Pose, PoseArray
 from sensor_msgs.msg import LaserScan
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
+from vision_msgs.msg import Detection3D, Detection3DArray
 
 from security_robot_perception.image_utils import image_msg_to_bgr, bgr_to_image_msg
 
@@ -191,12 +192,14 @@ class PersonTracker(Node):
         self.create_subscription(Odometry, gp('odom_topic').value, self.odom_callback, 50)
         self.create_subscription(LaserScan, gp('scan_topic').value, self.scan_callback, qos_profile_sensor_data)
         self.positions_pub = self.create_publisher(PoseArray, '/perception/person_positions', 10)
+        self.locations_pub = self.create_publisher(Detection3DArray, '/perception/person_locations', 10)
 
         self.tracked_pub = self.create_publisher(Detection2DArray, '/perception/tracked_persons', 10)
         self.count_pub = self.create_publisher(Int32, '/perception/person_count', 10)
         self.image_pub = self.create_publisher(Image, '/perception/tracked_image', 10)
 
         self.create_timer(1.0 / float(gp('draw_rate_hz').value), self.draw_tracks)
+        self.create_timer(0.2, self.publish_timer)   # steady 5 Hz output, whatever YOLO's speed
 
         visual = (f'{self.tracker_name} (YOLO must re-confirm every {self.max_visual_only:.0f} s)'
                   if self.tracker_factory else 'OFF (no OpenCV tracker available - install opencv-contrib-python)')
@@ -293,26 +296,41 @@ class PersonTracker(Node):
                 mem['hist'] = tr.hist
 
     def reidentify(self, tr, stamp, now):
-        """ID of a previously seen person matching this new track: similar clothing and (if known) nearby position."""
+        """ID of a previously seen person matching this new track. Position and clothing colours are weighed
+        together: the same spot needs only a loose colour match, a different spot needs a very strong one."""
         pos = self.localize(tr.box, stamp)
         tr.pos = pos
         hist = getattr(tr, 'hist', None)
         busy = {t.id for t in self.tracks if t.id is not None and t is not tr and now - t.last_seen < 1.0}
-        best, best_score = None, 0.0
+        best, best_score, notes = None, 0.0, []
         for pid, mem in self.person_memory.items():
             if pid in busy or now - mem.get('t', -1e9) > self.reid_memory:
                 continue
-            near = None
+            dist = None
             if pos is not None and mem.get('pos') is not None:
-                near = math.hypot(mem['pos'][0] - pos[0], mem['pos'][1] - pos[1]) <= self.reid_radius
+                dist = math.hypot(mem['pos'][0] - pos[0], mem['pos'][1] - pos[1])
+            sim = None
             if hist is not None and mem.get('hist') is not None:
                 sim = float(cv2.compareHist(hist, mem['hist'], cv2.HISTCMP_CORREL))
-                ok = sim >= 0.6 and (near is not False or sim >= 0.85)   # far away only if clothes match very well
-                score = sim
-            else:
+            near = None if dist is None else dist <= self.reid_radius
+
+            if sim is None:
                 ok, score = near is True, 0.5
+            elif near is True:
+                ok, score = sim >= 0.3, sim + 0.5      # same spot: accept unless the clothes clearly differ
+            elif near is None:
+                ok, score = sim >= 0.6, sim            # position unknown: rely on the clothes
+            else:
+                ok, score = sim >= 0.85, sim           # different spot: only a very strong clothes match
+
+            d_txt = '?' if dist is None else f'{dist:.1f} m'
+            s_txt = '?' if sim is None else f'{sim:.2f}'
+            notes.append(f'#{pid}: dist {d_txt}, clothes {s_txt}')
             if ok and score > best_score:
                 best, best_score = pid, score
+
+        if best is None and notes:
+            self.get_logger().info('No re-identification match (' + '; '.join(notes) + ')')
         if best is not None:
             for old in self.tracks:   # retire any stale track still carrying that ID
                 if old is not tr and old.id == best:
@@ -385,7 +403,7 @@ class PersonTracker(Node):
             tr.box = box
             tr.yaw = yaw
             tr.last_alive = now
-            self.remember(tr, t, now)
+            # position is NOT updated here: only YOLO-confirmed boxes move a person on the map
 
     def start_visual(self, tr, box, stamp, now):
         """Start a visual tracker on the frame YOLO actually looked at, then catch it up to the newest frame."""
@@ -480,7 +498,6 @@ class PersonTracker(Node):
                 self.maybe_confirm(track, det_stamp, now)
 
         self.prune(now)
-        self.publish_tracks(msg.header, yaw_det)
 
     def on_match(self, tr, predicted_box, det, yaw, det_stamp, now):
         box, conf = det
@@ -620,11 +637,40 @@ class PersonTracker(Node):
             poses.poses.append(pose)
         self.positions_pub.publish(poses)
 
+        located = Detection3DArray()
+        located.header.stamp = header.stamp
+        located.header.frame_id = 'odom'
+        for tr in confirmed:
+            pos = getattr(tr, 'pos', None)
+            if pos is None:
+                continue
+            d3 = Detection3D()
+            d3.header = located.header
+            d3.id = str(tr.id)
+            d3.bbox.center.position.x = float(pos[0])
+            d3.bbox.center.position.y = float(pos[1])
+            d3.bbox.center.position.z = 0.85
+            d3.bbox.center.orientation.w = 1.0
+            d3.bbox.size.x, d3.bbox.size.y, d3.bbox.size.z = 0.4, 0.4, 1.7
+            hyp = ObjectHypothesisWithPose()
+            hyp.hypothesis.class_id = 'person'
+            hyp.hypothesis.score = float(tr.conf)
+            d3.results.append(hyp)
+            located.detections.append(d3)
+        self.locations_pub.publish(located)
+
         count = len(confirmed)
         self.count_pub.publish(Int32(data=count))
         if count != self.last_count:
             self.get_logger().info(f'People present: {count}')
             self.last_count = count
+
+    def publish_timer(self):
+        """Publish tracked people at a steady rate, independent of how fast YOLO runs."""
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = 'camera_optical_link'
+        self.publish_tracks(header, self.latest_yaw())
 
     def draw_tracks(self):
         if self.latest_image is None:
