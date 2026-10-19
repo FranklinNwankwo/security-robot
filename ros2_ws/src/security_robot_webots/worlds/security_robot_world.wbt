@@ -1,7 +1,7 @@
 #VRML_SIM R2025a utf8
 
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
-EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/humans/pedestrian/protos/Pedestrian.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/humans/skin_animated_humans/protos/CharacterSkin.proto"
 
 WorldInfo {
   basicTimeStep 32
@@ -192,33 +192,6 @@ Solid {
   ]
   name "crate b"
   boundingObject USE CRATE_B
-}
-Pedestrian {
-  translation 3.3 1.2 1.27
-  rotation 0 0 1 3.14159
-  name "person east room"
-  controller "<none>"
-  shirtColor 0.8 0.2 0.2
-  pantsColor 0.2 0.2 0.4
-  enableBoundingObject TRUE
-}
-Pedestrian {
-  translation -2 -2.6 1.27
-  rotation 0 0 1 1.5708
-  name "person main hall"
-  controller "<none>"
-  shirtColor 0.2 0.5 0.8
-  pantsColor 0.3 0.3 0.3
-  enableBoundingObject TRUE
-}
-Pedestrian {
-  translation -2.6 1.5 1.27
-  rotation 0 0 1 0
-  name "person north office"
-  controller "<none>"
-  shirtColor 0.9 0.8 0.2
-  pantsColor 0.15 0.15 0.15
-  enableBoundingObject TRUE
 }
 Robot {
   translation 0 0 0
@@ -417,4 +390,67 @@ Robot {
     mass 15
   }
   controller "<extern>"
+}
+Robot {
+  translation 3.3 1.2 0
+  rotation 0 0 1 3.14159
+  children [
+    CharacterSkin {
+      name "skin"
+      model "Robert"
+    }
+  ]
+  name "person east room"
+  boundingObject Pose {
+    translation 0 0 0.85
+    children [
+      Cylinder {
+        height 1.7
+        radius 0.2
+      }
+    ]
+  }
+  controller "<none>"
+}
+Robot {
+  translation -2.0 -2.6 0
+  rotation 0 0 1 1.5708
+  children [
+    CharacterSkin {
+      name "skin"
+      model "Sandra"
+    }
+  ]
+  name "person main hall"
+  boundingObject Pose {
+    translation 0 0 0.85
+    children [
+      Cylinder {
+        height 1.7
+        radius 0.2
+      }
+    ]
+  }
+  controller "<none>"
+}
+Robot {
+  translation -2.6 1.5 0
+  rotation 0 0 1 0
+  children [
+    CharacterSkin {
+      name "skin"
+      model "Sophia"
+    }
+  ]
+  name "person north office"
+  boundingObject Pose {
+    translation 0 0 0.85
+    children [
+      Cylinder {
+        height 1.7
+        radius 0.2
+      }
+    ]
+  }
+  controller "<none>"
 }

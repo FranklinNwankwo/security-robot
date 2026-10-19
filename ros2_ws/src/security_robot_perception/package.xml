@@ -3,13 +3,18 @@
 <package format="3">
   <name>security_robot_perception</name>
   <version>0.0.1</version>
-  <description>Camera-based person detection (YOLO) for the security robot</description>
+  <description>Camera-based person detection (YOLO) and tracking for the security robot</description>
   <maintainer email="slim@todo.todo">slim</maintainer>
   <license>Apache-2.0</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>vision_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
 
   <export>

@@ -49,7 +49,7 @@ class PersonDetector(Node):
 
         self.declare_parameter('model_path', str(Path.home() / 'models' / 'yolov8n.pt'))
         self.declare_parameter('image_topic', '/camera/image_raw')
-        self.declare_parameter('confidence_threshold', 0.35)
+        self.declare_parameter('confidence_threshold', 0.4)
         self.declare_parameter('inference_rate_hz', 3.0)
         self.declare_parameter('image_size', 640)
         self.declare_parameter('cpu_threads', 2)
