@@ -147,9 +147,9 @@ class PersonDetector(Node):
 
             if self.publish_annotated:
                 p1, p2 = (int(x1), int(y1)), (int(x2), int(y2))
-                cv2.rectangle(frame, p1, p2, (0, 255, 0), 2)
-                cv2.putText(frame, f'person {conf:.2f}', (p1[0], max(p1[1] - 6, 12)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv2.rectangle(frame, p1, p2, (0, 255, 0), 3)
+                cv2.putText(frame, f'person {conf:.2f}', (p1[0], max(p1[1] - 8, 24)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
         self.detections_pub.publish(detections)
         if self.publish_annotated:

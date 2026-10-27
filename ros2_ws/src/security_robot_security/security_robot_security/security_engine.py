@@ -9,6 +9,8 @@ from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
+from nav2_msgs.srv import ManageLifecycleNodes
+from lifecycle_msgs.srv import GetState
 from nav_msgs.msg import OccupancyGrid
 from rclpy.action import ActionClient
 from rclpy.node import Node
@@ -62,6 +64,12 @@ class SecurityEngine(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.nav_state_client = self.create_client(GetState, '/bt_navigator/get_state')
+        self.nav_manage_client = self.create_client(ManageLifecycleNodes, '/lifecycle_manager_navigation/manage_nodes')
+        self.nav_active = False
+        self.nav_check_pending = False
+        self.nav_down_since = None
+        self.last_nav_recovery = 0.0
 
         self.create_subscription(String, '/security/zone_events', self.zone_event_callback, 50)
         self.create_subscription(Detection3DArray, '/perception/person_locations', self.locations_callback, 10)
@@ -102,6 +110,7 @@ class SecurityEngine(Node):
         self.last_goal_time = 0.0
 
         self.create_timer(0.5, self.tick)
+        self.create_timer(1.0, self.check_nav)
         names = ' -> '.join(w['name'] for w in self.waypoints)
         self.get_logger().info(f'Security engine ready. Patrol route: {names}{" (looping)" if self.loop else ""}')
 
@@ -394,12 +403,64 @@ class SecurityEngine(Node):
         if self.send_goal(wp['x'], wp['y'], math.radians(float(wp.get('yaw_deg', 0.0))), purpose='patrol'):
             self.set_state('PATROL', f"heading to '{wp['name']}' ({self.patrol_index + 1}/{len(self.waypoints)})")
 
+    # ================= Nav2 health =================
+
+    def check_nav(self):
+        """Is Nav2's navigation actually ACTIVE? (Its action server can exist while it is shut down.)"""
+        if self.nav_check_pending or not self.nav_state_client.service_is_ready():
+            return
+        self.nav_check_pending = True
+        self.nav_state_client.call_async(GetState.Request()).add_done_callback(self.on_nav_state)
+
+    def on_nav_state(self, future):
+        self.nav_check_pending = False
+        try:
+            state = future.result().current_state
+            active, label = state.id == 3, state.label
+        except Exception:
+            active, label = False, 'unknown'
+        now = time.monotonic()
+        if active:
+            if not self.nav_active:
+                self.get_logger().info('Nav2 navigation is active')
+            self.nav_active = True
+            self.nav_down_since = None
+            return
+        if self.nav_active or self.nav_down_since is None:
+            self.get_logger().warn(f"Nav2 navigation is not active (state: {label}) - pausing decisions")
+        self.nav_active = False
+        if self.nav_down_since is None:
+            self.nav_down_since = now
+        if now - self.nav_down_since > 10.0 and now - self.last_nav_recovery > 30.0:
+            self.recover_nav()
+
+    def recover_nav(self):
+        if not self.nav_manage_client.service_is_ready():
+            return
+        self.last_nav_recovery = time.monotonic()
+        self.get_logger().warn('Restarting Nav2 navigation (RESET + STARTUP)')
+        req = ManageLifecycleNodes.Request()
+        req.command = ManageLifecycleNodes.Request.RESET
+        self.nav_manage_client.call_async(req).add_done_callback(lambda f: self.startup_nav())
+
+    def startup_nav(self):
+        req = ManageLifecycleNodes.Request()
+        req.command = ManageLifecycleNodes.Request.STARTUP
+        self.nav_manage_client.call_async(req)
+
     # ================= main loop =================
 
     def tick(self):
         now = time.monotonic()
+        if self.state != 'STARTUP' and not self.nav_active:
+            if self.goal_result == 'rejected':
+                self.goal_result = None      # not the waypoint's fault - Nav2 is down
+            if now - self.last_wait_log > 5.0:
+                self.get_logger().warn(f'[{self.state}] paused - waiting for Nav2 navigation to become active')
+                self.last_wait_log = now
+            return
         if self.state == 'STARTUP':
-            if self.nav_client.server_is_ready() and self.robot_pose() is not None:
+            if self.nav_active and self.nav_client.server_is_ready() and self.robot_pose() is not None:
                 self.set_state('PATROL', 'Nav2 ready - starting patrol')
                 self.send_patrol_goal()
             elif now - self.last_wait_log > 5.0:
