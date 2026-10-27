@@ -54,6 +54,11 @@ class AlertStore:
                 status TEXT DEFAULT 'in zone',
                 snapshot TEXT,
                 acknowledged INTEGER DEFAULT 0)''')
+            cols = {r[1] for r in self.db.execute('PRAGMA table_info(alerts)')}
+            if 'severity' not in cols:
+                self.db.execute("ALTER TABLE alerts ADD COLUMN severity TEXT DEFAULT 'alert'")
+            if 'reason' not in cols:
+                self.db.execute('ALTER TABLE alerts ADD COLUMN reason TEXT')
             self.db.commit()
 
     def open_incident(self, zone, person_id, now):
@@ -83,6 +88,24 @@ class AlertStore:
             self.db.execute(
                 'UPDATE alerts SET status=? WHERE id=(SELECT id FROM alerts WHERE zone=? AND person_id=? '
                 'ORDER BY id DESC LIMIT 1)', (status, zone, person_id))
+            self.db.commit()
+
+    def latest_for(self, zone, person_id):
+        with self.lock:
+            if zone and person_id not in (None, 'None'):
+                row = self.db.execute('SELECT * FROM alerts WHERE zone=? AND person_id=? ORDER BY id DESC LIMIT 1',
+                                      (zone, person_id)).fetchone()
+                if row:
+                    return dict(row)
+            if zone:
+                row = self.db.execute('SELECT * FROM alerts WHERE zone=? ORDER BY id DESC LIMIT 1', (zone,)).fetchone()
+                return dict(row) if row else None
+        return None
+
+    def set_severity(self, alert_id, severity, reason):
+        with self.lock:
+            self.db.execute('UPDATE alerts SET severity=?, reason=?, acknowledged=0 WHERE id=?',
+                            (severity, reason, alert_id))
             self.db.commit()
 
     def recent(self, limit):
@@ -115,6 +138,7 @@ class SecurityBridge(Node):
 
         self.create_subscription(String, '/security/zone_events', self.on_zone_event, 50)
         self.create_subscription(String, '/security/state', self.on_state, 10)
+        self.create_subscription(String, '/security/escalations', self.on_escalation, 10)
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.on_pose, 10)
         self.create_subscription(Detection3DArray, '/perception/person_locations', self.on_people, 10)
         self.create_subscription(Int32, '/perception/person_count', self.on_count, 10)
@@ -184,6 +208,24 @@ class SecurityBridge(Node):
             self.store.set_status(zone, pid, 'left the zone')
         elif event == 'lost_sight':
             self.store.set_status(zone, pid, 'out of view')
+
+    def on_escalation(self, msg):
+        try:
+            ev = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        severity, reason = ev.get('severity', 'escalated'), ev.get('reason', '')
+        zone = ev.get('zone')
+        pid = None if ev.get('person_id') is None else str(ev.get('person_id'))
+        now = time.time()
+        alert = self.store.latest_for(zone, pid)
+        if alert is None:
+            snapshot = self.save_snapshot(pid or '?', zone or 'robot', now)
+            alert_id = self.store.add(now, pid or '-', zone or 'robot', 'robot', 0.0, 0.0, snapshot)
+        else:
+            alert_id = alert['id']
+        self.store.set_severity(alert_id, severity, reason)
+        self.get_logger().error(f'{severity.upper()} on alert #{alert_id}: {reason}')
 
     def save_snapshot(self, pid, zone, now):
         with self.lock:

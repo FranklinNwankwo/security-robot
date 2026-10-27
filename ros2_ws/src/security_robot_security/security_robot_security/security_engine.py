@@ -7,11 +7,13 @@ import rclpy
 import yaml
 from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
 from nav2_msgs.srv import ManageLifecycleNodes
 from lifecycle_msgs.srv import GetState
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, Odometry
+from sensor_msgs.msg import LaserScan
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, qos_profile_sensor_data
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.time import Time
@@ -46,6 +48,12 @@ class SecurityEngine(Node):
         self.declare_parameter('ignore_after_s', 120.0)    # after giving up on someone, ignore them this long
         self.declare_parameter('max_goal_cost', 50)        # 0-100 costmap value allowed at a goal spot
         self.declare_parameter('handover_radius_m', 1.0)   # someone this close to the target's spot IS the target
+        self.declare_parameter('personal_space_m', 1.0)    # someone this close while the robot is stopped -> step back
+        self.declare_parameter('close_now_m', 0.6)         # someone this close at any time -> step back
+        self.declare_parameter('retreat_to_m', 1.5)        # back away until this far
+        self.declare_parameter('clear_distance_m', 1.8)    # resume once nobody is closer than this for 2 s
+        self.declare_parameter('approach_escalate_count', 2)  # close approaches within 2 min -> escalate
+        self.declare_parameter('max_retreat_s', 12.0)      # never stay in personal-space mode longer than this
 
         gp = self.get_parameter
         self.map_frame = gp('map_frame').value
@@ -58,6 +66,23 @@ class SecurityEngine(Node):
         self.ignore_after = float(gp('ignore_after_s').value)
         self.max_goal_cost = int(gp('max_goal_cost').value)
         self.handover_radius = float(gp('handover_radius_m').value)
+        self.personal_space = float(gp('personal_space_m').value)
+        self.close_now = float(gp('close_now_m').value)
+        self.retreat_to = float(gp('retreat_to_m').value)
+        self.clear_distance = float(gp('clear_distance_m').value)
+        self.approach_escalate = int(gp('approach_escalate_count').value)
+        self.max_retreat = float(gp('max_retreat_s').value)
+        self.intrusion = None          # (distance, bearing, time) of the closest non-map object
+        self.rear_min = float('inf')
+        self.robot_speed = 0.0
+        self.static_map = None
+        self.ps_prev_state = None
+        self.ps_clear_since = None
+        self.approach_times = []
+        self.escalation_history = {}
+        self.intrusion_hist = []       # (time, distance) of the nearest non-map object
+        self.ps_started = 0.0
+        self.ps_cooldown_until = 0.0
 
         self.load_route(gp('route_file').value)
 
@@ -75,6 +100,14 @@ class SecurityEngine(Node):
         self.create_subscription(Detection3DArray, '/perception/person_locations', self.locations_callback, 10)
         self.create_subscription(OccupancyGrid, '/global_costmap/costmap', self.costmap_callback, 1)
         self.state_pub = self.create_publisher(String, '/security/state', 10)
+        self.escalation_pub = self.create_publisher(String, '/security/escalations', 10)
+        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        map_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(OccupancyGrid, '/map', self.on_map, map_qos)
+        self.create_subscription(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data)
+        self.create_subscription(Odometry, '/odom', self.on_odom, 10)
+        self.create_timer(0.1, self.personal_space_control)
 
         # --- state ---
         self.state = 'STARTUP'
@@ -403,6 +436,154 @@ class SecurityEngine(Node):
         if self.send_goal(wp['x'], wp['y'], math.radians(float(wp.get('yaw_deg', 0.0))), purpose='patrol'):
             self.set_state('PATROL', f"heading to '{wp['name']}' ({self.patrol_index + 1}/{len(self.waypoints)})")
 
+    # ================= personal space =================
+
+    def on_map(self, msg):
+        self.static_map = msg
+
+    def on_odom(self, msg):
+        self.robot_speed = abs(msg.twist.twist.linear.x)
+
+    def is_static(self, x, y):
+        """Wall/furniture in the saved map (or unknown/outside it)? Checks a 20 cm neighbourhood for map error."""
+        info = self.static_map.info
+        mx = int((x - info.origin.position.x) / info.resolution)
+        my = int((y - info.origin.position.y) / info.resolution)
+        r = max(1, int(0.2 / info.resolution))
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                cx, cy = mx + dx, my + dy
+                if not (0 <= cx < info.width and 0 <= cy < info.height):
+                    return True
+                v = self.static_map.data[cy * info.width + cx]
+                if v < 0 or v >= 65:
+                    return True
+        return False
+
+    def on_scan(self, msg):
+        """Closest LiDAR point that is NOT part of the saved map = something (someone) near the robot."""
+        pose = self.robot_pose()
+        if pose is None or self.static_map is None:
+            return
+        rx, ry, ryaw = pose
+        best = None
+        rear = float('inf')
+        for i, r in enumerate(msg.ranges):
+            if not (msg.range_min <= r <= msg.range_max) or math.isinf(r) or math.isnan(r):
+                continue
+            a = msg.angle_min + i * msg.angle_increment
+            if abs(wrap_angle(a - math.pi)) < 0.7:          # the sector behind the robot
+                rear = min(rear, r)
+            if r > self.clear_distance + 0.5:
+                continue
+            if self.is_static(rx + r * math.cos(ryaw + a), ry + r * math.sin(ryaw + a)):
+                continue
+            if best is None or r < best[0]:
+                best = (r, a)
+        self.rear_min = rear
+        now = time.monotonic()
+        if best is None:
+            self.intrusion = None
+        else:
+            self.intrusion = (best[0], best[1], now)
+            self.intrusion_hist.append((now, best[0]))
+        self.intrusion_hist = [(t, d) for t, d in self.intrusion_hist if now - t <= 2.0]
+
+    def fresh_intrusion(self, now):
+        i = self.intrusion
+        return i if i is not None and now - i[2] < 1.0 else None
+
+    def closing_in(self, now):
+        """Has the nearest non-map object come >= 15 cm closer in the last 1.5 s? (someone approaching)"""
+        recent = [(t, d) for t, d in self.intrusion_hist if now - t <= 1.5]
+        if len(recent) < 2:
+            return False
+        return max(d for _, d in recent) - recent[-1][1] >= 0.15
+
+    def personal_space_control(self):
+        now = time.monotonic()
+        intr = self.fresh_intrusion(now)
+        if self.state == 'PERSONAL_SPACE':
+            self.retreat_step(now, intr)
+            return
+        if self.state == 'STARTUP' or not self.nav_active or intr is None or now < self.ps_cooldown_until:
+            return
+        dist = intr[0]
+        # Only react to someone APPROACHING. A person standing still is Nav2's job (it plans around them).
+        if self.closing_in(now) and ((self.robot_speed < 0.1 and dist < self.personal_space) or dist < self.close_now):
+            self.begin_personal_space(now, dist)
+
+    def begin_personal_space(self, now, dist):
+        self.ps_prev_state = self.state
+        self.ps_clear_since = None
+        self.ps_started = now
+        self.cancel_goal()
+        self.approach_times = [t for t in self.approach_times if now - t < 120.0] + [now]
+        self.get_logger().warn(f'Someone is {dist:.1f} m from the robot - turning to face them and stepping back')
+        self.set_state('PERSONAL_SPACE', f'keeping distance from someone {dist:.1f} m away')
+        if len(self.approach_times) >= self.approach_escalate:
+            self.escalate(f'someone approached the robot {len(self.approach_times)} times in 2 minutes',
+                          self.target_id, self.target_zone)
+            self.approach_times = []
+
+    def retreat_step(self, now, intr):
+        cmd = Twist()
+        too_long = now - self.ps_started > self.max_retreat
+        far_enough = intr is None or intr[0] >= self.retreat_to
+        if too_long or (far_enough and not self.closing_in(now)):
+            if self.ps_clear_since is None:
+                self.ps_clear_since = now
+            self.cmd_pub.publish(cmd)
+            if too_long or now - self.ps_clear_since > 1.5:
+                if too_long:
+                    self.get_logger().warn(
+                        f'Someone still close after {self.max_retreat:.0f} s - resuming (Nav2 keeps its safety margin)')
+                self.ps_cooldown_until = now + 10.0
+                self.end_personal_space(now)
+            return
+        self.ps_clear_since = None
+        dist, bearing = intr[0], intr[1]
+        if abs(bearing) > 0.35:                                   # turn to face them (camera on them)
+            cmd.angular.z = max(-0.8, min(0.8, 1.2 * bearing))
+        if dist < self.retreat_to and abs(bearing) < 0.6:         # facing them: back straight away
+            if self.rear_min > 0.6:
+                cmd.linear.x = -0.2
+            elif now - self.last_wait_log > 5.0:
+                self.get_logger().warn('Cannot back away (something behind) - holding position, facing them')
+                self.last_wait_log = now
+        self.cmd_pub.publish(cmd)
+
+    def end_personal_space(self, now):
+        prev = self.ps_prev_state or 'PATROL'
+        self.cmd_pub.publish(Twist())
+        self.get_logger().info('Personal space clear - resuming')
+        self.goal_result = None
+        self.goal_purpose = None
+        self.goal_person_pos = None
+        if prev == 'SEARCH' and self.target_id is not None:
+            self.begin_search(now)
+            return
+        if prev in ('INVESTIGATE', 'OBSERVE') and self.target_id is not None:
+            self.set_state(prev, f'resuming after stepping back from Person #{self.target_id}')
+            return
+        self.set_state('PATROL', f"resuming at '{self.waypoints[self.patrol_index]['name']}'")
+
+    def tick_personal_space(self, now):
+        pass   # driven at 10 Hz by personal_space_control
+
+    # ================= escalation =================
+
+    def escalate(self, reason, person_id=None, zone=None):
+        now = time.monotonic()
+        key = zone or 'robot'
+        history = [t for t in self.escalation_history.get(key, []) if now - t < 600.0]
+        severity = 'critical' if history else 'escalated'
+        history.append(now)
+        self.escalation_history[key] = history
+        payload = {'severity': severity, 'person_id': person_id, 'zone': zone, 'reason': reason, 'time': time.time()}
+        self.escalation_pub.publish(String(data=json.dumps(payload)))
+        self.get_logger().error(f'[{severity.upper()}] {reason}' + (f" (zone '{zone}')" if zone else ''))
+
     # ================= Nav2 health =================
 
     def check_nav(self):
@@ -554,6 +735,8 @@ class SecurityEngine(Node):
             self.get_logger().warn(
                 f"Person #{self.target_id} still in '{self.target_zone}' after {self.observe_max:.0f} s - "
                 f"logged as unresolved, returning to patrol")
+            self.escalate(f'Person #{self.target_id} still in restricted zone after {self.observe_max:.0f} s',
+                          self.target_id, self.target_zone)
             self.resume('observation time limit reached', ignore=True)
             return
         pos = self.target_position(now)
@@ -590,6 +773,7 @@ class SecurityEngine(Node):
             self.set_state('INVESTIGATE', f"approaching Person #{self.target_id} in '{self.target_zone}'")
             return
         if now - self.search_since > self.search_timeout:
+            self.escalate(f'Intruder Person #{self.target_id} lost in restricted zone', self.target_id, self.target_zone)
             self.resume(f'Person #{self.target_id} not found within {self.search_timeout:.0f} s', ignore=True)
             return
         if self.nav_busy:
@@ -606,6 +790,7 @@ class SecurityEngine(Node):
             if robot is not None:
                 self.send_goal(robot[0], robot[1], self.search_yaws.pop(0), purpose='search')
         else:
+            self.escalate(f'Intruder Person #{self.target_id} lost in restricted zone', self.target_id, self.target_zone)
             self.resume(f'Person #{self.target_id} not found after looking around', ignore=True)
 
 

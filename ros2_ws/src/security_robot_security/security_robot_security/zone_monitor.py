@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, time as dt_time
+from zoneinfo import ZoneInfo
 import math
 import time
 from pathlib import Path
@@ -29,6 +31,36 @@ def point_in_polygon(x, y, polygon):
             if x < x_cross:
                 inside = not inside
     return inside
+
+
+DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
+
+def parse_hhmm(value):
+    """'18:00' -> time(18, 0). Also accepts YAML's sexagesimal int for unquoted 18:00 (= 1080)."""
+    if isinstance(value, int):
+        return dt_time(value // 60, value % 60)
+    h, m = str(value).split(':')
+    return dt_time(int(h), int(m))
+
+
+def schedule_active(schedule, now):
+    """True if `now` (aware datetime) falls in any period. Handles overnight periods like 18:00-07:00."""
+    t = now.time()
+    today = DAYS[now.weekday()]
+    yesterday = DAYS[(now.weekday() - 1) % 7]
+    for period in schedule:
+        days = [str(d).lower()[:3] for d in period.get('days', DAYS)]
+        start, end = parse_hhmm(period['start']), parse_hhmm(period['end'])
+        if start <= end:
+            if today in days and start <= t <= end:
+                return True
+        else:
+            if today in days and t >= start:
+                return True
+            if yesterday in days and t < end:
+                return True
+    return False
 
 
 def yaw_from_quaternion(q):
@@ -70,7 +102,7 @@ class ZoneMonitor(Node):
         self.create_timer(0.5, self.evaluate)
         self.create_timer(1.0, self.publish_markers)
 
-        names = ', '.join(f"{z['name']} ({z['level']})" for z in self.zones)
+        names = ', '.join(f"{z['name']} ({self.level(z)})" for z in self.zones)
         self.get_logger().info(f'Zone monitor ready with {len(self.zones)} zones: {names}')
 
     # ---------- setup ----------
@@ -79,6 +111,11 @@ class ZoneMonitor(Node):
         data = yaml.safe_load(Path(path).read_text())
         self.zone_frame = data.get('frame_id', 'map')
         self.alert_cooldown = float(data.get('alert_cooldown_s', 60.0))
+        try:
+            self.tz = ZoneInfo(data.get('timezone', 'UTC'))
+        except Exception:
+            self.tz = ZoneInfo('UTC')
+        self.last_levels = {}
         self.zones = []
         for z in data.get('zones', []):
             polygon = [(float(p[0]), float(p[1])) for p in z['polygon']]
@@ -87,9 +124,25 @@ class ZoneMonitor(Node):
             level = z.get('level', 'restricted')
             if level not in LEVEL_COLORS:
                 raise ValueError(f"Zone {z['name']}: level must be one of {list(LEVEL_COLORS)}")
-            self.zones.append({'name': z['name'], 'level': level, 'polygon': polygon})
+            inactive = z.get('inactive_level', 'watch')
+            if inactive not in LEVEL_COLORS:
+                raise ValueError(f"Zone {z['name']}: inactive_level must be one of {list(LEVEL_COLORS)}")
+            if z.get('schedule'):
+                for period in z['schedule']:
+                    parse_hhmm(period['start'])
+                    parse_hhmm(period['end'])
+            self.zones.append({'name': z['name'], 'level': level, 'polygon': polygon,
+                               'schedule': z.get('schedule'), 'inactive_level': inactive})
         if not self.zones:
             raise ValueError(f'No zones defined in {path}')
+
+    def level(self, zone):
+        """The zone's level right now: its configured level inside its schedule, inactive_level outside it."""
+        if not zone.get('schedule'):
+            return zone['level']
+        if schedule_active(zone['schedule'], datetime.now(self.tz)):
+            return zone['level']
+        return zone.get('inactive_level', 'watch')
 
     # ---------- inputs ----------
 
@@ -129,7 +182,7 @@ class ZoneMonitor(Node):
             'event': event,
             'person_id': int(pid) if str(pid).isdigit() else pid,
             'zone': zone['name'],
-            'level': zone['level'],
+            'level': self.level(zone),
             'x': round(person['x'], 2),
             'y': round(person['y'], 2),
             'time': time.time(),
@@ -140,12 +193,12 @@ class ZoneMonitor(Node):
         key = (pid, zone['name'])
         if event == 'zone_entered':
             recent = time.monotonic() - self.last_alert.get(key, -1e9) < self.alert_cooldown
-            if zone['level'] == 'restricted' and not recent:
+            if self.level(zone) == 'restricted' and not recent:
                 self.last_alert[key] = time.monotonic()
                 self.get_logger().warn(f"[ALERT] Person #{pid} entered restricted zone '{zone['name']}' at {where}")
             else:
-                note = ' (already alerted recently)' if zone['level'] == 'restricted' else ''
-                self.get_logger().info(f"Person #{pid} is in {zone['level']} zone '{zone['name']}' at {where}{note}")
+                note = ' (already alerted recently)' if self.level(zone) == 'restricted' else ''
+                self.get_logger().info(f"Person #{pid} is in {self.level(zone)} zone '{zone['name']}' at {where}{note}")
         elif event == 'zone_exited':
             self.get_logger().info(f"Person #{pid} left zone '{zone['name']}'")
         elif event == 'lost_sight':
@@ -153,6 +206,12 @@ class ZoneMonitor(Node):
 
     def evaluate(self):
         now = time.monotonic()
+        for z in self.zones:
+            lvl = self.level(z)
+            prev = self.last_levels.get(z['name'])
+            if prev is not None and prev != lvl:
+                self.get_logger().info(f"Zone '{z['name']}' is now {lvl} (schedule)")
+            self.last_levels[z['name']] = lvl
         for pid in list(self.people):
             person = self.people[pid]
             present = now - person['t'] <= self.person_timeout
@@ -189,7 +248,7 @@ class ZoneMonitor(Node):
 
         intrusions = sum(
             1 for (pid, zname), st in self.state.items()
-            if st['inside'] and any(z['name'] == zname and z['level'] == 'restricted' for z in self.zones)
+            if st['inside'] and any(z['name'] == zname and self.level(z) == 'restricted' for z in self.zones)
         )
         self.count_pub.publish(Int32(data=intrusions))
 
@@ -205,7 +264,7 @@ class ZoneMonitor(Node):
 
         mid = 0
         for zone in self.zones:
-            r, g, b = LEVEL_COLORS[zone['level']]
+            r, g, b = LEVEL_COLORS[self.level(zone)]
 
             outline = Marker()
             outline.header.frame_id = self.marker_frame
@@ -230,13 +289,13 @@ class ZoneMonitor(Node):
             label.pose.orientation.w = 1.0
             label.scale.z = 0.3
             label.color.r, label.color.g, label.color.b, label.color.a = r, g, b, 1.0
-            label.text = f"{zone['name']} [{zone['level']}]"
+            label.text = f"{zone['name']} [{self.level(zone)}]"
             markers.markers.append(label)
             mid += 1
 
         for pid, person in self.people.items():
             in_restricted = any(
-                self.state.get((pid, z['name']), {}).get('inside') and z['level'] == 'restricted'
+                self.state.get((pid, z['name']), {}).get('inside') and self.level(z) == 'restricted'
                 for z in self.zones
             )
             body = Marker()
