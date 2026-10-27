@@ -377,6 +377,18 @@ Robot {
       width 640
       height 480
     }
+    InertialUnit {
+      translation 0 0 0.12
+      name "imu"
+    }
+    Gyro {
+      translation 0 0 0.12
+      name "gyro"
+    }
+    Accelerometer {
+      translation 0 0 0.12
+      name "accelerometer"
+    }
   ]
   name "security_robot"
   boundingObject Pose {

@@ -11,6 +11,7 @@ HALF_WHEEL_SEPARATION = 0.24   # m, calibrated: wheel contact is at the outer ri
 MAX_WHEEL_SPEED = 12.0  # rad/s, matches RotationalMotor maxVelocity
 
 ODOM_FRAME = 'odom'
+GYRO_WEIGHT = 0.98            # rotation: 98% gyro (no slip), 2% wheels (keeps gyro drift in check)
 BASE_FRAME = 'base_link'
 LEFT_WHEEL_JOINT = 'left_wheel_joint'
 RIGHT_WHEEL_JOINT = 'right_wheel_joint'
@@ -33,6 +34,9 @@ class SecurityRobotDriver:
         self.__right_sensor = self.__robot.getDevice('right wheel sensor')
         self.__left_sensor.enable(self.__timestep)
         self.__right_sensor.enable(self.__timestep)
+        self.__gyro = self.__robot.getDevice('gyro')
+        if self.__gyro is not None:
+            self.__gyro.enable(self.__timestep)
 
         # Odometry state
         self.__x = 0.0
@@ -43,13 +47,16 @@ class SecurityRobotDriver:
         self.__prev_time = None
 
         self.__target_twist = Twist()
+        # Settings from the URDF <plugin> element (an EKF can take over /odom and the odom->base_link TF)
+        self.__odom_topic = properties.get('odomTopic', 'odom')
+        self.__publish_tf = str(properties.get('publishTf', 'true')).lower() == 'true'
 
         # ROS interfaces
         if not rclpy.ok():
             rclpy.init(args=None)
         self.__node = rclpy.create_node('security_robot_driver')
         self.__node.create_subscription(Twist, 'cmd_vel', self.__cmd_vel_callback, 1)
-        self.__odom_pub = self.__node.create_publisher(Odometry, 'odom', 10)
+        self.__odom_pub = self.__node.create_publisher(Odometry, self.__odom_topic, 10)
         self.__joint_pub = self.__node.create_publisher(JointState, 'joint_states', 10)
         self.__tf_broadcaster = TransformBroadcaster(self.__node)
 
@@ -105,7 +112,12 @@ class SecurityRobotDriver:
 
         # Differential-drive forward kinematics (midpoint integration)
         d_center = (d_left + d_right) / 2.0
-        d_yaw = (d_right - d_left) / (2.0 * HALF_WHEEL_SEPARATION)
+        d_yaw_wheels = (d_right - d_left) / (2.0 * HALF_WHEEL_SEPARATION)
+        d_yaw = d_yaw_wheels
+        if self.__gyro is not None:
+            gyro_rate = self.__gyro.getValues()[2]           # rad/s around the vertical axis
+            if not math.isnan(gyro_rate):
+                d_yaw = GYRO_WEIGHT * gyro_rate * dt + (1.0 - GYRO_WEIGHT) * d_yaw_wheels
 
         self.__x += d_center * math.cos(self.__yaw + d_yaw / 2.0)
         self.__y += d_center * math.sin(self.__yaw + d_yaw / 2.0)
@@ -160,7 +172,8 @@ class SecurityRobotDriver:
         tf.transform.translation.y = self.__y
         tf.transform.rotation.z = qz
         tf.transform.rotation.w = qw
-        self.__tf_broadcaster.sendTransform(tf)
+        if self.__publish_tf:
+            self.__tf_broadcaster.sendTransform(tf)
 
         # /joint_states (wheel angles, so the wheels spin in RViz)
         joints = JointState()

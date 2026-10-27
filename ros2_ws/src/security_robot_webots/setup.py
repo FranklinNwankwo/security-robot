@@ -28,5 +28,6 @@ setup(
     entry_points={'console_scripts': [
         'scan_normalizer = security_robot_webots.scan_normalizer:main',
         'walker = security_robot_webots.walker:main',
+        'imu_covariance = security_robot_webots.imu_covariance:main',
     ]},
 )

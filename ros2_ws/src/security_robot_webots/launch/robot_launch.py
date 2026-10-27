@@ -63,6 +63,21 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description}],
     )
 
+    imu_covariance = Node(
+        package='security_robot_webots',
+        executable='imu_covariance',
+        output='screen',
+    )
+
+    ekf = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='screen',
+        parameters=[os.path.join(package_dir, 'config', 'ekf.yaml')],
+        remappings=[('odometry/filtered', '/odom')],
+    )
+
     scan_normalizer = Node(
         package='security_robot_webots',
         executable='scan_normalizer',
@@ -128,6 +143,8 @@ def generate_launch_description():
         webots,
         security_robot_driver,
         robot_state_publisher,
+        imu_covariance,
+        # ekf,  # robot_localization EKF - use on real hardware; sim fuses the gyro in the driver
         scan_normalizer,
         slam,
         nav2,
