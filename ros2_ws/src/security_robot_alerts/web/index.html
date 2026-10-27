@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security Robot Dashboard</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --muted:#8b949e;
+          --green:#2ea043; --red:#da3633; --orange:#d29922; --blue:#388bfd; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { display:flex; align-items:center; gap:16px; padding:12px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  .badge { padding:4px 12px; border-radius:999px; font-weight:700; font-size:13px; letter-spacing:.04em; background:#30363d; }
+  .badge.PATROL { background:var(--green); } .badge.INVESTIGATE, .badge.OBSERVE { background:var(--red); }
+  .badge.SEARCH { background:var(--orange); } .badge.STARTUP, .badge.UNKNOWN { background:#30363d; }
+  #detail { color:var(--muted); } #clock { margin-left:auto; color:var(--muted); }
+  main { display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; padding:16px 20px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; min-width:0; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; }
+  canvas, #cam { width:100%; display:block; border-radius:4px; background:#000; }
+  .stats { display:flex; gap:20px; margin-top:10px; color:var(--muted); flex-wrap:wrap; }
+  .stats b { color:var(--text); }
+  .alerts { grid-column: 1 / -1; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }
+  tr.new td { background:rgba(218,54,51,.12); }
+  img.thumb { width:120px; border-radius:4px; cursor:zoom-in; display:block; }
+  button { background:#21262d; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 10px; cursor:pointer; }
+  button:hover { border-color:var(--muted); }
+  .ack { color:var(--muted); }
+  #empty { color:var(--muted); padding:12px 8px; }
+  #zoom { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; padding:16px; }
+  #zoom img { max-width:100%; max-height:100%; border-radius:6px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Security Robot</h1>
+  <span id="state" class="badge UNKNOWN">CONNECTING</span>
+  <span id="detail">waiting for data...</span>
+  <span id="clock"></span>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Live map</h2>
+    <canvas id="map"></canvas>
+    <div class="stats">
+      <span>People in view: <b id="count">0</b></span>
+      <span>Robot: <b id="pose">-</b></span>
+      <span>Patrol waypoint: <b id="waypoint">-</b></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Robot camera</h2>
+    <img id="cam" src="/api/camera.mjpg" alt="Robot camera">
+  </section>
+
+  <section class="panel alerts">
+    <h2>Alerts</h2>
+    <table>
+      <thead><tr><th>Time</th><th>Zone</th><th>Person</th><th>Status</th><th>Sightings</th><th>Snapshot</th><th></th></tr></thead>
+      <tbody id="alerts"></tbody>
+    </table>
+    <div id="empty">No alerts yet.</div>
+  </section>
+</main>
+
+<div id="zoom" onclick="this.style.display='none'"><img id="zoomimg" alt=""></div>
+
+<script>
+const canvas = document.getElementById('map');
+const ctx = canvas.getContext('2d');
+let mapMeta = null, zones = [], mapImg = null, lastStatus = null;
+const SCALE = 3;
+
+function toPx(x, y) {
+  const r = mapMeta.resolution, [ox, oy] = mapMeta.origin;
+  return [((x - ox) / r) * SCALE, (mapMeta.height - (y - oy) / r) * SCALE];
+}
+
+function inPolygon(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < xi + (y - yi) * (xj - xi) / (yj - yi)) inside = !inside;
+  }
+  return inside;
+}
+
+function draw() {
+  if (!mapMeta || !mapImg) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(mapImg, 0, 0, canvas.width, canvas.height);
+
+  for (const z of zones) {
+    const color = z.level === 'restricted' ? '218,54,51' : '210,153,34';
+    ctx.beginPath();
+    z.polygon.forEach(([x, y], i) => { const [px, py] = toPx(x, y); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${color},0.12)`; ctx.fill();
+    ctx.strokeStyle = `rgb(${color})`; ctx.lineWidth = 2; ctx.stroke();
+    const cx = z.polygon.reduce((s, p) => s + p[0], 0) / z.polygon.length;
+    const cy = z.polygon.reduce((s, p) => s + p[1], 0) / z.polygon.length;
+    const [lx, ly] = toPx(cx, cy);
+    ctx.fillStyle = `rgb(${color})`; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(z.name.replace('_', ' '), lx, ly);
+  }
+
+  if (!lastStatus) return;
+  for (const p of lastStatus.people) {
+    const restricted = zones.some(z => z.level === 'restricted' && inPolygon(p.x, p.y, z.polygon));
+    const [px, py] = toPx(p.x, p.y);
+    ctx.beginPath(); ctx.arc(px, py, 8, 0, 2 * Math.PI);
+    ctx.fillStyle = restricted ? '#da3633' : '#2ea043'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('#' + p.id, px + 11, py + 4);
+  }
+
+  const r = lastStatus.robot;
+  if (r) {
+    const [px, py] = toPx(r.x, r.y);
+    ctx.save(); ctx.translate(px, py); ctx.rotate(-r.yaw);
+    ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-9, 8); ctx.lineTo(-5, 0); ctx.lineTo(-9, -8); ctx.closePath();
+    ctx.fillStyle = '#388bfd'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+  }
+}
+
+async function loadMap() {
+  const res = await fetch('/api/map');
+  const data = await res.json();
+  mapMeta = data.map; zones = data.zones || [];
+  if (!mapMeta) return;
+  canvas.width = mapMeta.width * SCALE; canvas.height = mapMeta.height * SCALE;
+  mapImg = new Image(); mapImg.onload = draw; mapImg.src = '/api/map.png';
+}
+
+async function refreshStatus() {
+  try {
+    const s = await (await fetch('/api/status')).json();
+    lastStatus = s;
+    const st = (s.state && s.state.state) || 'UNKNOWN';
+    const badge = document.getElementById('state');
+    badge.textContent = st; badge.className = 'badge ' + st;
+    document.getElementById('detail').textContent = (s.state && s.state.detail) || '';
+    document.getElementById('count').textContent = s.people_count;
+    document.getElementById('waypoint').textContent = (s.state && s.state.patrol_waypoint) || '-';
+    document.getElementById('pose').textContent = s.robot ? `(${s.robot.x.toFixed(1)}, ${s.robot.y.toFixed(1)})` : '-';
+    draw();
+  } catch (e) {
+    document.getElementById('state').textContent = 'OFFLINE';
+  }
+}
+
+function fmtTime(t) { return new Date(t * 1000).toLocaleTimeString(); }
+
+async function refreshAlerts() {
+  const rows = await (await fetch('/api/alerts?limit=50')).json();
+  const body = document.getElementById('alerts');
+  document.getElementById('empty').style.display = rows.length ? 'none' : 'block';
+  body.innerHTML = rows.map(a => `
+    <tr class="${a.acknowledged ? '' : 'new'}">
+      <td>${fmtTime(a.started)}</td>
+      <td>${a.zone.replace('_', ' ')}</td>
+      <td>#${a.person_id}</td>
+      <td>${a.status}</td>
+      <td>${a.sightings}</td>
+      <td>${a.snapshot ? `<img class="thumb" src="/api/snapshots/${a.snapshot}" onclick="zoom(this.src)">` : '-'}</td>
+      <td>${a.acknowledged ? '<span class="ack">acknowledged</span>' : `<button onclick="ack(${a.id})">Acknowledge</button>`}</td>
+    </tr>`).join('');
+}
+
+async function ack(id) { await fetch(`/api/alerts/${id}/ack`, { method: 'POST' }); refreshAlerts(); }
+function zoom(src) { document.getElementById('zoomimg').src = src; document.getElementById('zoom').style.display = 'flex'; }
+
+setInterval(() => { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+loadMap();
+refreshStatus(); refreshAlerts();
+setInterval(refreshStatus, 1000);
+setInterval(refreshAlerts, 2000);
+</script>
+</body>
+</html>
